@@ -42,7 +42,7 @@ def set_device(device_name):
         PROCESS_WIDTH=10
     else:
         PROCESS_WIDTH=4
-    
+
 def refresh_config():
     global RANK, SAMPLE_SIZE, SINGLE_SAMPLE_SIZE, NUMBER_OF_COLUMNS
     RANK = 10
@@ -54,10 +54,12 @@ def sample_mat_default(row_size=RANK, col_size=RANK, size=SINGLE_SAMPLE_SIZE, de
     '''
     default sampling function.
     return an array of matrices of shape row_size*col_size,
-    '''    
-    return torch._sample_dirichlet(torch.tensor([[1., ] * row_size, ] * (col_size * size), dtype=torch.float64, device=device)).reshape(-1, col_size, row_size).permute(0, 2, 1)
+    '''
+    return torch._sample_dirichlet(torch.tensor([[1., ] * row_size, ] * (col_size * size),
+                                                dtype=torch.float64,
+                                                device=device)).reshape(-1, col_size, row_size).permute(0, 2, 1)
 
-##################################################################################
+
 
 def roc_bi(mat):
     '''
@@ -80,13 +82,14 @@ def roc_bi(mat):
     # res in terms of (l,m,m) array, l matrices, m true hypotheses, m ref hypotheses
     logdiff = log.reshape(l, n, 1, m) - log.reshape(l, n, m, 1)
     logdiff *= mat.reshape(l, n, 1, m)
-    
+
     res = torch.sum(logdiff, dim=1)
-    
+
     del log, logdiff
     torch.cuda.empty_cache()
     # next find the minimal nonzero elements among the 'other hypotheses'
-    return torch.min(res + torch.diag(torch.ones(m, device=res.device)*float("Inf")).reshape(1, m, m), dim=1).values
+    return torch.min(res + torch.diag(torch.ones(m, device=res.device,
+                                                 dtype=torch.float64)*float("Inf")).reshape(1, m, m), dim=1).values
 
 
 def roc_scbi(mat):
@@ -108,19 +111,19 @@ def roc_scbi(mat):
     # 4 indices: (mat, row-index, other-col-index, true-col-index), same as in BI.
     bigmat = mat.reshape(l, n, m, 1)/mat.reshape(l, n, 1, m)
     quotient = torch.sum(bigmat, dim=1)
-    
+
     logq = torch.log(quotient) + torch.diag(torch.ones(m,device=logm.device)*float("Inf")).reshape(1, m, m)
     torch.cuda.empty_cache()
-    
+
     logs = torch.mean(logm, dim=1)
     logq += logs.reshape(l, 1, m)
     logq -= logs.reshape(l, m, 1)
     result = torch.min(logq, axis=1).values - np.log(n)
-    
+
     del quotient, bigmat
     del logm, logq
     torch.cuda.empty_cache()
-    
+
     return result
 
 
@@ -141,28 +144,31 @@ def comparison(matrices):
     diff = torch.mean(roc_scbi(matrices), dim=1)
     diff -= torch.mean(roc_bi(matrices), dim=1)
     # torch.cuda.empty_cache()
-    return [torch.mean(diff).item(), torch.mean((diff >= 0).double()).item()]
+    # return [torch.mean(diff).item(), torch.mean((diff >= 0).double()).item()]
+    return torch.mean(diff).item(), torch.sum((diff >= 0).long()).item()
 
 def single_round(args):
     '''
     Single round in multiprocessing
     '''
     global SINGLE_SAMPLE_SIZE, FOR_LOOP_DEPTH, DEVICE
-    
+
     seed, n, m = args
     torch.manual_seed(seed)
     # result = np.zeros([FOR_LOOP_DEPTH, 2])
     # result = torch.zeros([FOR_LOOP_DEPTH, 2],
     #                      dtype=torch.float64,
     #                      device=torch.device("cpu"))
-    result = []
+    mean = np.zeros(FOR_LOOP_DEPTH, dtype=np.float64)
+    freq = np.zeros(FOR_LOOP_DEPTH, dtype=np.int64)
     for i in range(FOR_LOOP_DEPTH):
         matrices = sample_mat_default(n, m, SINGLE_SAMPLE_SIZE, DEVICE)
         # result[i,:] = comparison(matrices)
-        result += [comparison(matrices), ]
+        mean[i], freq[i] = comparison(matrices)
     # return torch.mean(result, dim=0).numpy()
-    return np.mean(np.array(result), axis=0)
-    
+    return np.mean(mean), np.sum(freq)
+    # return np.sum(np.array(result), axis=0)
+
 def multi_round(n, m):
     '''
     Multi-Processing
@@ -175,11 +181,13 @@ def multi_round(n, m):
 
     pool = mp.Pool(PROCESS_WIDTH)
     print("\n", n, "rows", m, "colums")
-    result = np.array(pool.map(single_round, args))
+    result = pool.map(single_round, args)
+    multi_mean = np.array([x[0] for x in result])
+    multi_freq = np.array([x[1] for x in result])
     pool.close()
-    return np.mean(result, axis=0)
+    return np.mean(multi_mean), np.sum(multi_freq)
 
-def run_fix_row(start, size, sample=None, single = None):
+def run_fix_row(start, size, sample=None, single=None):
     '''
     fix row number, vary column number
     '''
