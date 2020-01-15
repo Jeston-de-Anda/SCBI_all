@@ -88,8 +88,11 @@ def roc_bi(mat):
     del log, logdiff
     torch.cuda.empty_cache()
     # next find the minimal nonzero elements among the 'other hypotheses'
-    return torch.min(res + torch.diag(torch.ones(m, device=res.device,
-                                                 dtype=torch.float64)*float("Inf")).reshape(1, m, m), dim=1).values
+    return torch.min(res + \
+                     torch.diag(torch.ones(m,
+                                           device=res.device,
+                                           dtype=torch.float64)*float("Inf")).reshape(1, m, m),
+                     dim=1).values
 
 
 def roc_scbi(mat):
@@ -112,7 +115,10 @@ def roc_scbi(mat):
     bigmat = mat.reshape(l, n, m, 1)/mat.reshape(l, n, 1, m)
     quotient = torch.sum(bigmat, dim=1)
 
-    logq = torch.log(quotient) + torch.diag(torch.ones(m,device=logm.device)*float("Inf")).reshape(1, m, m)
+    logq = torch.log(quotient) + \
+        torch.diag(torch.ones(m,
+                              dtype=torch.float64,
+                              device=logm.device)*float("Inf")).reshape(1, m, m)
     torch.cuda.empty_cache()
 
     logs = torch.mean(logm, dim=1)
@@ -146,6 +152,7 @@ def comparison(matrices):
     # torch.cuda.empty_cache()
     # return [torch.mean(diff).item(), torch.mean((diff >= 0).double()).item()]
     return torch.mean(diff).item(), torch.sum((diff >= 0).long()).item()
+
 
 def single_round(args):
     '''

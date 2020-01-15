@@ -10,6 +10,14 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 import sinkhorn_torch as sk
+import datetime
+
+
+from multiprocessing import set_start_method
+try:
+    set_start_method('spawn')
+except RuntimeError:
+    pass
 
 
 class StabilityTester:
@@ -23,20 +31,20 @@ class StabilityTester:
 
         if device.lower() == "cpu":
             self.device = "cpu"
-        elif device.lower()[:5] == "cuda":
-            if device[5:] == "":
+        elif device.lower()[:4] == "cuda":
+            if device[4:] == "":
                 self.device = "cuda"
-            elif device[6:].isnumeric():
-                if int(device[6:]) < torch.cuda.device_count():
-                    self.device = "cuda:" + device[6:]
+            elif device[5:].isnumeric():
+                if int(device[5:]) < torch.cuda.device_count():
+                    self.device = "cuda:" + device[5:]
         else:
             self.device = "cpu"
             # raise Exception("Unavailable device") # another choice
 
         # self.block_size=0
 
-        self.sk_epsilon = 1e-5
-        self.bi_epsilon = 1e-3
+        self.sk_epsilon = 1e-7
+        self.bi_epsilon = 1e-5
         self.max_depth = 1000
         self.cpu = torch.device("cpu")
 
@@ -142,14 +150,15 @@ class StabilityTester:
         torch.manual_seed(seed)
         n, m = self.mat_teach.shape
         ret = torch.zeros([self.block_size, m * 2],
-                          dtype=torch.float64, device=self.mat_teach.device)
+                          dtype=torch.float64,
+                          device=self.mat_teach.device)
         for i in range(self.block_size):
             ret[i] = self.single_inference().clone()
 
         return torch.mean(ret, dim=0).to(self.cpu)
 
 
-    def inference_fixed_initial(self, repeats, block_size=100):
+    def inference_fixed_initial(self, repeats, block_size=100, pool_size=10):
         '''
         Inference behaviour on a single initial condition
 
@@ -169,25 +178,29 @@ class StabilityTester:
                    to delta-distribution.
         '''
 
+        print("Inference Start:", datetime.datetime.today())
+
         n, m = self.mat_teach.shape
         self.block_size = block_size
         # maybe it worths to do it also on GPU?
 
 
         seeds = list(np.random.randint(0, int(2**31-1), [repeats,]))
-        pool = mp.Pool()
+        pool = mp.Pool(pool_size)
 
         # result = torch.cat(pool.map(self.single, seeds)).view([-1, 2 * m])
         inf_result = pool.map(self.single, seeds)
         pool.close()
         inf_result = torch.cat(inf_result).view([-1, 2 * m])
-        print(result)
+        # print(inf_result)
 
         self.mat_teach = self.mat_teach.to(self.cpu)
         self.prior_teach = self.prior_teach.to(self.cpu)
         self.prior_learn = self.prior_learn.to(self.cpu)
         self.mat_learn = self.mat_learn.to(self.cpu)
 
+
+        print("Inference End:", datetime.datetime.today())
         return torch.mean(inf_result, dim=0).view([2,m])
 
 
