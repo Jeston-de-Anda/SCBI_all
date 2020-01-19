@@ -139,7 +139,7 @@ def graph3d(data, color=None, log=True, simplex=False,  markersize=13):
     else:
         ax.scatter(data[:,0], data[:,1], data[:, 2], marker='h',  )
         
-    ax.legend()
+    # ax.legend()
     
     
     return fig, ax
@@ -153,7 +153,7 @@ def graph2d(data, color=None, log=True, simplex=False, markersize=13):
     fig = plt.figure()
     ax = fig.gca()
     
-    fr = np.array([[0,1], [-np.sqrt(3)/2,-1/2,], [np.sqrt(3)/2,-1/2],[0,1]])
+    fr = np.array([[0,1], [-np.sqrt(3)/2,-1/2,], [np.sqrt(3)/2,-1/2],[0,1]]) * np.sqrt(2/3)
     if simplex:
         ax.plot(fr[:, 0], fr[:, 1])
     
@@ -168,6 +168,6 @@ def graph2d(data, color=None, log=True, simplex=False, markersize=13):
     else:
         ax.scatter(data[:,0], data[:,1], marker='h', )
         
-    ax.legend()
+    # ax.legend()
     
     return fig, ax

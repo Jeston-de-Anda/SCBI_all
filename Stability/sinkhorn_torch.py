@@ -54,13 +54,13 @@ def col_normalize(mat, col_sum):
     return mat
     
 
-def sinkhorn_torch(mat,
-                   row_sum=None,
-                   col_sum=None,
-                   epsilon=1e-7,
-                   max_iter=10000):
+def sinkhorn_torch_base(mat,
+                        row_sum,
+                        col_sum,
+                        epsilon=1e-7,
+                        max_iter=10000,):
     '''
-    Sinkhorn scaling
+    Sinkhorn scaling base
 
     Parameters
     ----------
@@ -74,13 +74,8 @@ def sinkhorn_torch(mat,
     ------
     Sinkhorn scaled matrix (in place, can skip capturing it)
     '''
-    n, m = mat.shape
-    row_sum = row_sum if row_sum is not None else torch.ones(n, dtype=torch.float64,
-                                                             device=mat.device)
-    col_sum = col_sum if col_sum is not None else torch.ones(m, dtype=torch.float64,
-                                                             device=mat.device)
 
-    diff = torch.ones(m, dtype=torch.float64, device=mat.device)
+    diff = torch.ones_like(col_sum, dtype=torch.float64, device=mat.device)
     max_iter //= 10
     
     while torch.sum(torch.abs(diff)) >= epsilon and max_iter:
@@ -90,3 +85,50 @@ def sinkhorn_torch(mat,
         max_iter -= 1
 
     return mat
+
+
+def sinkhorn_torch(mat,
+                   row_sum=None,
+                   col_sum=None,
+                   epsilon=1e-7,
+                   max_iter=10000,
+                   # row_check=False, # Not activate for efficiency concern
+                  ):
+    '''
+    Sinkhorn scaling base
+
+    Parameters
+    ----------
+    mat     : muted torch 2-tensor of shape(n,m)
+    row_sum : immuted torch 1-tensor of size n
+    col_sum : immuted torch 1-tensor of size m
+    epsilon : tolerance of 1-norm on column-sums with rows normalized
+    max_iter: maximal iteration steps (multiples of 10)
+    row_confident: whether row sums are all nonzeros (to bypass the check for nan-problem)
+    col_confident: whether col sums are all nonzeros (to bypass the check for nan-problem)
+
+    Return
+    ------
+    Sinkhorn scaled matrix (in place, can skip capturing it)
+    '''
+    n, m = mat.shape
+    row_sum = row_sum if row_sum is not None else torch.ones(n, dtype=torch.float64,
+                                                             device=mat.device)
+    col_sum = col_sum if col_sum is not None else torch.ones(m, dtype=torch.float64,
+                                                             device=mat.device)
+    
+    # if row_check:
+    #     mat[row_sum != 0, col_sum != 0] = sinkhorn_torch_base(mat[row_sum != 0, col_sum != 0],
+    #                                                           row_sum[row_sum != 0],
+    #                                                           col_sum[col_sum != 0],
+    #                                                           epsilon, max_iter)
+    # mat[:, col_sum == 0.] = 0.
+    # mat[row_sum == 0., :] = 0.
+    mat[:, col_sum != 0.] = sinkhorn_torch_base(mat[:, col_sum != 0.], 
+                                                row_sum, 
+                                                col_sum[col_sum != 0], 
+                                                epsilon, max_iter)
+    mat[:, col_sum == 0.] = 0.
+        
+    return mat
+        
