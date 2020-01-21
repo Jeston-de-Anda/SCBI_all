@@ -22,35 +22,53 @@ UPPERBOUND = lambda theta: 1./np.sqrt(6)/np.sin(5/6*np.pi-theta)
 def adjust_matrix(matrix):
     """
     Sorting matrix cols.
+
+    matrix: can be a numpy 2d-array or pytorch 2d-Tensor
+
+    Return
+    ------
+    adjusted pytorch 2d-tensor
     """
-    if type(matrix) is np.ndarray:
+    if isinstance(matrix, np.ndarray):
         tmp = torch.from_numpy(matrix).clone() # ?
     else:
         tmp = matrix.clone()
-        
+
     tmp /= tmp[:, 0].view([-1, 1])
     tmp = sk.col_normalize(tmp, torch.ones(3, dtype=torch.float64))
 
-    if torch.sum(torch.log(tmp[:, 1])) < torch.sum(torch.log(tmp[:, 2])):
-        return torch.from_numpy(matrix)
+    if torch.sum(torch.log(tmp[:, 1])) > torch.sum(torch.log(tmp[:, 2])):
+        # return torch.from_numpy(matrix)
+        return 2
 
-    a = matrix[:, 1].copy()
-    matrix[:, 1] = matrix[:, 2]
-    matrix[:, 2] = a
-    return torch.from_numpy(matrix)
+    return 1
+    # ref = matrix[:, 1].copy()
+    # matrix[:, 1] = matrix[:, 2]
+    # matrix[:, 2] = ref
+
+    # return torch.from_numpy(matrix)
 
 
-def generate_single(matrix, density=120):
+def generate_single(matrix, index, density=120):
     """
     For a single matrix, generate equi-RoC variations
+
+    Further: structure has a $S_3$ symmetry, we may just calculate 1/6 of it.
+
+    Parameters
+    ----------
+    matrix: a pytorch 2d-tensor, target matrix which is adjusted
+    index: target column, can only be 1 or 2
+    density:
     """
+    n_row, n_col = matrix.shape
     tmp = matrix.clone()
     col = tmp[:, 0].view([-1, 1]).clone()
     # print(col)
     tmp /= col
-    tmp = sk.col_normalize(tmp, torch.ones(3, dtype=torch.float64))
-    origin = torch.ones(3, dtype=torch.float64)/3
-    destination = torch.sum(torch.log(tmp[:, -1]))
+    tmp = sk.col_normalize(tmp, torch.ones(n_col, dtype=torch.float64))
+    origin = torch.ones(n_row, dtype=torch.float64)/n_row
+    destination = torch.sum(torch.log(tmp[:, index]))
 
     theta_array = np.linspace(0, 2*np.pi, density, endpoint=False)
 
@@ -59,9 +77,9 @@ def generate_single(matrix, density=120):
         inner = tmp.clone()
         # print(col)
         weight = newton(0.5, loss, theta, origin, destination, lower=0, upper=UPPERBOUND(0.5))
-        inner[:, -1] = recover_coords(weight, theta, origin, destination)
+        inner[:, index] = recover_coords(weight, theta, origin, destination)
         inner *= col
-        result += [sk.col_normalize(inner, torch.ones(3, dtype=torch.float64)), ]
+        result += [sk.col_normalize(inner, torch.ones(n_col, dtype=torch.float64)), ]
     return result
 
 
@@ -123,6 +141,8 @@ def loss(ratio, *args):
 
 def newton_single(ratio, loss_fn, *args):
     '''
+    Parameters
+    ----------
     x   : a number or a list
     loss: function accepting temp t
 
@@ -148,8 +168,8 @@ def run(density=90, filename="Dim3_setup.log", outname="Equi_RoC.log"):
 
     mat_vars = []
     for mat in mats:
-        ad_mat = adjust_matrix(mat.numpy())
-        mat_vars += [(ad_mat, generate_single(mat, density=density)),]
+        index = adjust_matrix(mat.numpy())
+        mat_vars += [(mat, generate_single(mat, index, density=density)),]
 
     with open(outname, "wb") as f_ptr:
         pickle.dump({"mats": mat_vars,
@@ -159,6 +179,6 @@ def run(density=90, filename="Dim3_setup.log", outname="Equi_RoC.log"):
 if __name__ == '__main__':
     M = np.random.dirichlet([1, 1, 1], 3).T
     adjust_matrix(M)
-    generate_single(M)
+    generate_single(M, 2)
 
     run()
