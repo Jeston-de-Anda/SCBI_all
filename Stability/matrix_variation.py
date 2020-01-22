@@ -23,13 +23,15 @@ class MatrixVariation:
     PREFIX = ""
 
     @staticmethod
-    def generate_method_mix_roc(matrix, index=2, density=20, lower=0, upper=1):
+    def generate_method_mix_roc(matrix, index=2, density=20, lower=0, upper=1, gen_index=None):
         """
         Generate Mix RoC Matrix
 
         `matrix[:, index] = (x) * matrix[:, c_hypo] + (1-x) * matrix[:, index]`
         The above new column is guaranteed to be normalized, if `matrix` is col-normalized
         """
+        if gen_index is not None:
+            index = gen_index(matrix)
         epsilon = 1e-7
         c_hypo = 0 # correct hypothesis, by default 0
         mat = matrix.clone()
@@ -145,7 +147,7 @@ class MatrixVariation:
         results = []
         for mat in mats_learn:
             self.tester.set_mat_learn(mat)
-            results += self.tester.inference_fixed_initial(*args)
+            results += [self.tester.inference_fixed_initial(*args), ]
 
         with open(MatrixVariation.PREFIX + self.brand_name + str(dt.today()) + ".log",
                   "wb") as f_ptr:
