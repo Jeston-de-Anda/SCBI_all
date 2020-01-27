@@ -10,17 +10,43 @@ import torch
 import sinkhorn_torch as sk
 import stability_testers as st
 import equi_roc_mat_perturb as er
+import prior_variation as pv
 
+PV = pv.PriorVariation
 
-
-
-
+FL = torch.float64
 
 class MatrixVariation:
     """
     Matrix Variation
     """
     PREFIX = ""
+
+    @staticmethod
+    def generate_method_local_circ(matrix, index=2,
+                                   density=10, resolution=0.05,
+                                   r_inner=1, r_outer=6,
+                                   gen_index=None, **args):
+        """
+        Use PriorVariation.gen_circ_3 generate prior_variations.
+        """
+        n_row, n_col = matrix.shape
+        if gen_index is not None:
+            index = gen_index(matrix)
+        layers = PV.gen_circ_3(r_inner, r_outer, density=density, **args)
+
+        ret = torch.zeros([density*(r_inner+r_outer)*(r_outer-r_inner+1)//2,
+                           n_row, n_col], dtype=FL)
+        count = 0
+        for layer in layers.values():
+            for base_coord in layer:
+                ret[count, :, :] = matrix.clone()
+                ret[count, :, index] += resolution * \
+                    torch.matmul(torch.from_numpy(base_coord),
+                                 torch.from_numpy(PV.trans_simplex_3))
+                count += 1
+
+        return ret
 
     @staticmethod
     def generate_method_mix_roc(matrix, index=2, density=20, lower=0, upper=1, gen_index=None):
@@ -50,11 +76,11 @@ class MatrixVariation:
         return result
 
     @staticmethod
-    def generate_method_equi_roc(matrix, density=90):
+    def generate_method_equi_roc(matrix, density=90, gen_index=er.adjust_matrix):
         """
         This will change matrix itself
         """
-        index = er.adjust_matrix(matrix)
+        index = gen_index(matrix)
 
         return er.generate_single(matrix, index, density)
 
@@ -89,7 +115,7 @@ class MatrixVariation:
 
     def __init__(self, device="cpu",
                  generate_method=generate_method_single_entry,
-                 brand_name=""):
+                 brand_name="MV"):
         """
         Parameters
         ----------
@@ -146,8 +172,11 @@ class MatrixVariation:
 
         results = []
         for mat in mats_learn:
+            if torch.any(mat <= 0):
+                results += [None, ]
+                continue
             self.tester.set_mat_learn(mat)
-            results += [self.tester.inference_fixed_initial(*args), ]
+            results += [self.tester.inference_fixed_initial(*args, timer=False), ]
 
         with open(MatrixVariation.PREFIX + self.brand_name + str(dt.today()) + ".log",
                   "wb") as f_ptr:
@@ -180,7 +209,9 @@ class MatrixVariation:
         self.tester.set_correct_hypo(self.correct_hypo)
 
         for mat_data in mats:
+            print(mat_data[0])
             for prior in priors:
+                print(prior, dt.today())
                 self.run_single(mat_data, prior)
 
 
